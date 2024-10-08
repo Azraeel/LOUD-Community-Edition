@@ -1,9 +1,8 @@
 UnitBlueprint {
-    Merge = true,
-    BlueprintId = "brot3ncm",
-
     ScriptClass = 'BROT3NCM',
     ScriptModule = '/mods/QUIET-Community-Edition/units/Total Mayhem/BROT3NCM/BROT3NCM_Script.lua',
+
+    Source = '/mods/TotalMayhem/units/BROT3NCM/BROT3NCM_unit.bp',
 
     AI = { 
         GuardScanRadius = 44,
@@ -245,7 +244,7 @@ UnitBlueprint {
             ContinuousBeam = false,
 			
             Damage = 500,
-            DamageFriendly = true,
+            DamageFriendly = false,
             DamageType = 'Normal',
             DamageRadius = 1.5,
 
