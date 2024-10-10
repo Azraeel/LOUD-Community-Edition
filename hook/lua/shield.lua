@@ -299,10 +299,6 @@ Shield = Class(QCEShield) {
             local units = brain:GetUnitsAroundPoint(CategoriesOverspill, position, 0.5 * diameter, 'Ally')
 
             if units then
-<<<<<<< Updated upstream
-                --LOG("We found overlapping shields "..repr(units))
-=======
->>>>>>> Stashed changes
                 -- allocate locals once
                 local shieldOther
                 local radiusOther
@@ -359,10 +355,7 @@ Shield = Class(QCEShield) {
                 end
                 -- keep track of the number of adjacent shields
                 self.OverlappingShieldsCount = head - 1
-<<<<<<< Updated upstream
-=======
                 self.OverlappingShields = overlappingShields
->>>>>>> Stashed changes
             else
                 -- no units found
                 self.OverlappingShieldsCount = 0
@@ -625,7 +618,7 @@ Shield = Class(QCEShield) {
 
         self:SetMesh('')
         
-        if self.MeshZ != nil then
+        if self.MeshZ ~= nil then
             -- remove the mesh used for the shield
             self.MeshZ:Destroy()
             self.MeshZ = nil
@@ -685,7 +678,7 @@ Shield = Class(QCEShield) {
 
 		self:SetMesh('')
 		
-		if self.MeshZ != nil then
+		if self.MeshZ ~= nil then
 			self.MeshZ:Destroy()
 			self.MeshZ = nil
 		end
@@ -803,7 +796,7 @@ Shield = Class(QCEShield) {
 				
 				SetShieldRatio( self.Owner, GetHealth(self)/GetMaxHealth(self) )
 				
-                if GetResourceConsumed( self.Owner ) != 1 and GetEconomyStored(aiBrain, 'ENERGY') < 1 then
+                if GetResourceConsumed( self.Owner ) ~= 1 and GetEconomyStored(aiBrain, 'ENERGY') < 1 then
 					
 					break
 				end
