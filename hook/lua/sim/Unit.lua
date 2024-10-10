@@ -147,37 +147,42 @@ Unit = Class(QCEUnit) {
 
         self.PlayUnitSound(self,'Destroyed')		
         
-        WaitTicks(2)
-        
-        if self.DamageEffectsBag then
-            self:DestroyAllDamageEffects()
-        end
-
-        -- if simspeed too low suppress destruction effects --
-        if Sync.SimData.SimSpeed > -1 then
-        
-            if self.PlayDestructionEffects then
-                self:CreateDestructionEffects( overkillRatio )
+        local waitTime = self.DeathThreadDestructionWaitTime or 0.1
+        local function createEffects()
+            if self.DamageEffectsBag then
+                self:DestroyAllDamageEffects()
             end
+
+            -- if simspeed too low suppress destruction effects --
+            if Sync.SimData.SimSpeed > -1 then
         
-            if ( self.ShowUnitDestructionDebris and overkillRatio ) then
+                if self.PlayDestructionEffects then
+                    self:CreateDestructionEffects( overkillRatio )
+                end
         
-                if overkillRatio <= 0.30 then
-                    self:CreateUnitDestructionDebris( true, true, false )
-                else
-                    self:CreateUnitDestructionDebris( false, true, true )
+                if ( self.ShowUnitDestructionDebris and overkillRatio ) then
+        
+                    if overkillRatio <= 0.30 then
+                        self:CreateUnitDestructionDebris( true, true, false )
+                    else
+                        self:CreateUnitDestructionDebris( false, true, true )
+                    end
                 end
             end
         end
-        
-        if overkillRatio <= 0.30 then
-            self:CreateWreckage( overkillRatio )
+
+        local function createWreckage()
+            if overkillRatio <= 0.30 then
+                self:CreateWreckage( overkillRatio )
+            end
         end
 
-        WaitTicks( (self.DeathThreadDestructionWaitTime or 0.1) * 10 )
-
-        self:Destroy()
-        --LOG("Hello, I am QUIET CE Unit Lua. Welcome to the Journey, Young Sir!")
+        ForkThread(function()
+            WaitTicks(waitTime * 10)
+            createEffects()
+            createWreckage()
+            self:Destroy()
+        end)
     end,
 
 }
