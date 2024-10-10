@@ -8,63 +8,37 @@ Unit = Class(QCEUnit) {
 
     DoTakeDamage = function(self, instigator, amount, vector, damageType)
 
-		local GetHealth = GetHealth
-	
-        local preAdjHealth = GetHealth(self)
-		
-        AdjustHealth( self, instigator, -amount)
-		
+        AdjustHealth(self, instigator, -amount)
         if GetHealth(self) < 1 then
-		
             if damageType == 'Reclaimed' then
-			
                 self:Destroy()
-				
             else
-			
-                local excessDamageRatio = 0.0
-				
-                -- Calculate the excess damage amount
-                local excess = preAdjHealth - amount
+                local excessDamageRatio = 0
+                local preAdjHealth = GetHealth(self)
                 local maxHealth = EntityMethods.GetMaxHealth(self)
-				
-                if (excess < 0 and maxHealth > 0) then
-				
-                    excessDamageRatio = -excess / maxHealth
-					
+                if preAdjHealth - amount < 0 and maxHealth > 0 then
+                    excessDamageRatio = -(preAdjHealth - amount) / maxHealth
                 end
-				
-                Kill( self, instigator, damageType, excessDamageRatio)
-				
+                Kill(self, instigator, damageType, excessDamageRatio)
             end
-			
         end
 
         -- Handle incoming OC damage for ACUs
         if damageType == 'Overcharge' and LOUDENTITY(categories.COMMAND, self) then
-
             local wep = instigator:GetWeaponByLabel('OverCharge')
-
             amount = wep:GetBlueprint().Overcharge.commandDamage
-            
         end
 
         -- Handle incoming OC damage for Structures
         if damageType == 'Overcharge' and LOUDENTITY(categories.STRUCTURE, self) then
-
             local wep = instigator:GetWeaponByLabel('OverCharge')
-
             amount = wep:GetBlueprint().Overcharge.structureDamage
-            
         end
-		
-		
+
         if not self.Dead and LOUDENTITY(categories.COMMAND, self) then
-		
-			GetAIBrain(self):OnPlayCommanderUnderAttackVO()
-			
+            GetAIBrain(self):OnPlayCommanderUnderAttackVO()
         end
-		
+
     end,
 
     ReduceTransportSpeed = function(self)
@@ -156,33 +130,19 @@ Unit = Class(QCEUnit) {
             -- if simspeed too low suppress destruction effects --
             if Sync.SimData.SimSpeed > -1 then
         
-                if self.PlayDestructionEffects then
-                    self:CreateDestructionEffects( overkillRatio )
-                end
-        
+                self:CreateDestructionEffects( overkillRatio )
                 if ( self.ShowUnitDestructionDebris and overkillRatio ) then
-        
-                    if overkillRatio <= 0.30 then
-                        self:CreateUnitDestructionDebris( true, true, false )
-                    else
-                        self:CreateUnitDestructionDebris( false, true, true )
-                    end
+                    self:CreateUnitDestructionDebris( overkillRatio <= 0.30, true, true )
                 end
             end
         end
 
-        local function createWreckage()
-            if overkillRatio <= 0.30 then
-                self:CreateWreckage( overkillRatio )
-            end
+        WaitTicks(waitTime * 10)
+        createEffects()
+        if overkillRatio <= 0.30 then
+            self:CreateWreckage( overkillRatio )
         end
-
-        ForkThread(function()
-            WaitTicks(waitTime * 10)
-            createEffects()
-            createWreckage()
-            self:Destroy()
-        end)
+        self:Destroy()
     end,
 
 }
