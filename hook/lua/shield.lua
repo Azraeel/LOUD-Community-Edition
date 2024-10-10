@@ -121,17 +121,13 @@ Shield = Class(QCEShield) {
         _c_CreateShield(self, spec)
     end,
 
-    OnCreate = function( self, spec )
-
-        --LOG("We've entered LCE Version of Shield.lua - OnCreate Function")
-
+    OnCreate = function(self, spec)
         -- cache information that is used frequently
         self.Army = EntityGetArmy(self)
         self.EntityId = EntityGetEntityId(self)
         self.Brain = spec.Owner:GetAIBrain()
+        self.Dead = false
 
-		self.Dead = false
-        
         if spec.ImpactEffects ~= '' then
 			self.ImpactEffects = EffectTemplate[spec.ImpactEffects]
 		else
@@ -145,43 +141,8 @@ Shield = Class(QCEShield) {
         end
 
         -- manage impact entities
-        self.LiveImpactEntities = 0
         self.ImpactEntitySpecs = { Owner = spec.Owner }
-        
-
-		self.OffHealth = -1
-
-        -- copy over information from specifiaction
-        self.Size = spec.Size
-        self.Owner = spec.Owner
-        self.MeshBp = spec.Mesh
-        self.MeshZBp = spec.MeshZ
-        self.SpillOverDmgMod = spec.ShieldSpillOverDamageMod or 0.15
-        self.ShieldRechargeTime = spec.ShieldRechargeTime or 5
-        self.ShieldEnergyDrainRechargeTime = spec.ShieldEnergyDrainRechargeTime or 5
-        self.ShieldVerticalOffset = spec.ShieldVerticalOffset or -1
-        self.PassOverkillDamage = spec.PassOverkillDamage
-        self.SkipAttachmentCheck = spec.SkipAttachmentCheck
-
-        -- lookup whether we're a static shield for absorbing deathnukes with modded shields that don't have the value set
-        local absorptionType = spec.AbsorptionType
-        -- lookup whether we're a static or a commander shield for overcharge's fixed damage
-        local ownerBp = self.Owner.Blueprint
-        local ownerCategories = ownerBp.CategoriesHash
-        if ownerCategories.STRUCTURE then
-            self.StaticShield = true
-            if not absorptionType then
-                absorptionType = "StaticShield"
-            end
-        elseif ownerCategories.COMMAND then
-            self.CommandShield = true
-        end
-
-        -- lookup our damage absorption type's table
-        self.AbsorptionTypeDamageTypeToMulti = shieldAbsorptionValues[absorptionType or "Default"]
-
-        -- use trashbag of the unit that owns us
-        self.Trash = self.Owner.Trash
+        self.LiveImpactEntities = 0
 
         -- manage overlapping shields
         self.OverlappingShields = {}
@@ -193,20 +154,32 @@ Shield = Class(QCEShield) {
         self.DamagedRegular = {}
         self.DamagedOverspill = {}
 
-		self:SetSize(spec.Size)
-
         -- set some internal state related to shields
         self._IsUp = false
         self.ShieldType = 'Bubble'
 
-        -- attach us to the owner
-        EntityAttachBoneTo(self, -1, spec.Owner, -1)
-		
+        -- copy over information from specification
+        self.Size = spec.Size
+        self.Owner = spec.Owner
+        self.MeshBp = spec.Mesh
+        self.MeshZBp = spec.MeshZ
+        self.SpillOverDmgMod = spec.ShieldSpillOverDamageMod or 0.15
+        self.ShieldRechargeTime = spec.ShieldRechargeTime or 5
+        self.ShieldEnergyDrainRechargeTime = spec.ShieldEnergyDrainRechargeTime or 5
+        self.ShieldVerticalOffset = spec.ShieldVerticalOffset or -1
+        self.PassOverkillDamage = spec.PassOverkillDamage
+        self.SkipAttachmentCheck = spec.SkipAttachmentCheck
+        self.AbsorptionType = spec.AbsorptionType
+        self.AbsorptionTypeDamageTypeToMulti = shieldAbsorptionValues[self.AbsorptionType or "Default"]
+
+        -- use trashbag of the unit that owns us
+        self.Trash = self.Owner.Trash
+
         -- set our health
         EntitySetMaxHealth(self, spec.ShieldMaxHealth)
         EntitySetHealth(self, self, spec.ShieldMaxHealth)
 
-		SetShieldRatio( self.Owner, 1 )
+        SetShieldRatio(self.Owner, 1)
 
         self:SetShieldRegenRate(spec.ShieldRegenRate)
         self:SetShieldRegenStartTime(spec.ShieldRegenStartTime)
@@ -216,70 +189,71 @@ Shield = Class(QCEShield) {
         EntitySetVizToEnemies(self, 'Intel')
         EntitySetVizToAllies(self, 'Always')
         EntitySetVizToNeutrals(self, 'Intel')
-        
-        GetStat( self.Owner,'SHIELDHP', 0 )
-        GetStat( self.Owner,'SHIELDREGEN', 0 )
-  
-        SetStat( self.Owner,'SHIELDHP', spec.ShieldMaxHealth )
-        SetStat( self.Owner,'SHIELDREGEN', spec.ShieldRegenRate)
-		
-		if ScenarioInfo.ShieldDialog then
-			LOG("*AI DEBUG Shield created on "..__blueprints[self.Owner.BlueprintID].Description) 
-		end
+
+        -- attach us to the owner
+        EntityAttachBoneTo(self, -1, spec.Owner, -1)
+
+        if ScenarioInfo.ShieldDialog then
+            LOG("*AI DEBUG Shield created on " .. __blueprints[self.Owner.BlueprintID].Description)
+        end
 
         ChangeState(self, self.EnergyDrainRechargeState)
-
-        --LOG("We've exitting LCE Version of Shield.lua - OnCreate Function")
     end,
 	
+    -- Create a new thread and fork it. Also add it to the unit's trashbag so it gets cleaned up when the unit dies.
     ForkThread = function(self, fn, ...)
         local thread = ForkThread(fn, self, unpack(arg))
         TrashAdd( self.Owner.Trash, thread )
 		return thread
     end,
-	
-	SetRechargeTime = function(self, rechargeTime, energyRechargeTime)
+
+    -- Set the recharge time and energy recharge time for this shield.
+    SetRechargeTime = function(self, rechargeTime, energyRechargeTime)
         self.ShieldRechargeTime = rechargeTime
         self.ShieldEnergyDrainRechargeTime = energyRechargeTime
     end,
 
-	SetVerticalOffset = function(self, offset)
+    -- Set the vertical offset for this shield.
+    SetVerticalOffset = function(self, offset)
         self.ShieldVerticalOffset = offset
     end,
 
+    -- Set the size of this shield.
     SetSize = function(self, size)
         self.Size = size
     end,
 
+    -- Set the shield regen rate.
     SetShieldRegenRate = function(self, rate)
         self.RegenRate = rate
     end,
 
+    -- Set the shield regen start time.
     SetShieldRegenStartTime = function(self, time)
         self.RegenStartTime = time
     end,
 
+    -- Update the shield ratio for the unit. If value is negative, calculate it from the current health of the shield.
     UpdateShieldRatio = function(self, value)
 	
-        if value >= 0 then
-		
-            SetShieldRatio( self.Owner, value )
-        else
-		
-            SetShieldRatio( self.Owner, EntityGetHealth(self) / EntityGetMaxHealth(self))
+        if value < 0 then
+            value = EntityGetHealth(self) / EntityGetMaxHealth(self)
         end
 		
+        SetShieldRatio( self.Owner, value )
     end,
 
+    -- Get the position of the shield, this is the same as the unit's position.
     GetCachePosition = function(self)
         return self:GetPosition()
     end,
 
-    -- Note, this is called by native code to calculate spillover damage. The
-    -- damage logic will subtract this value from any damage it does to units
-    -- under the shield. The default is to always absorb as much as possible
-    -- but the reason this function exists is to allow flexible implementations
-    -- like shields that only absorb partial damage (like armor).
+    -- Called by native code to calculate spillover damage. Native code will subtract
+    -- the returned value from any damage it does to units under the shield. The
+    -- default is to always absorb as much as possible but the reason this function
+    -- exists is to allow flexible implementations like shields that only absorb
+    -- partial damage (like armor). Performance-sensitive as it's called on every
+    -- damage event.
     --- How much of incoming damage is absorbed by the shield. Used by the engine to calculate remainder spillover damage
     ---@param self Shield
     ---@param instigator Unit
@@ -287,23 +261,20 @@ Shield = Class(QCEShield) {
     ---@param type DamageType
     ---@return number damageAbsorbed If not all damage is absorbed, the remainder passes to targets under the shield.
     OnGetDamageAbsorption = function(self, instigator, amount, type)
+        -- We don't absorb tree damage
         if type == "TreeForce" or type == "TreeFire" then
-            return
+            return 0
         end
-        -- Allow decoupling the shield from the owner's armor multiplier
+
+        -- Decouple shield absorption from owner armor
         local absorptionMulti = self.AbsorptionTypeDamageTypeToMulti[type] or self.Owner:GetArmorMult(type)
 
-        -- Like armor damage, first multiply by armor reduction, then apply handicap
-        -- See SimDamage.cpp (DealDamage function) for how this should work
+        -- First apply armor reduction, then apply handicap
         amount = amount * absorptionMulti
         amount = amount * (1.0 - ArmyGetHandicap(self.Army))
 
         local health = EntityGetHealth(self)
-        if health < amount then
-            return health
-        else
-            return amount
-        end
+        return math.min(amount, health)
     end,
 
     --- Retrieves allied shields that overlap with this shield, caches the results per tick
@@ -328,7 +299,10 @@ Shield = Class(QCEShield) {
             local units = brain:GetUnitsAroundPoint(CategoriesOverspill, position, 0.5 * diameter, 'Ally')
 
             if units then
+<<<<<<< Updated upstream
                 --LOG("We found overlapping shields "..repr(units))
+=======
+>>>>>>> Stashed changes
                 -- allocate locals once
                 local shieldOther
                 local radiusOther
@@ -340,7 +314,11 @@ Shield = Class(QCEShield) {
                 local psx, psy, psz = EntityGetPositionXYZ(self)
                 local radius = 0.5 * self.Size
 
+                -- pre-allocate our result table once to avoid allocating it every iteration
+                -- and to avoid using the slow built-in table.insert
+                local overlappingShields = {}
                 local head = 1
+
                 for k, other in units do
 
                     -- store reference to reduce table lookups
@@ -374,58 +352,65 @@ Shield = Class(QCEShield) {
                         -- compute squared distance and check it
                         d = dx * dx + dy * dy + dz * dz
                         if d < distanceToOverlap then
-                            self.OverlappingShields[head] = shieldOther
+                            overlappingShields[head] = shieldOther
                             head = head + 1
                         end
                     end
                 end
                 -- keep track of the number of adjacent shields
                 self.OverlappingShieldsCount = head - 1
+<<<<<<< Updated upstream
+=======
+                self.OverlappingShields = overlappingShields
+>>>>>>> Stashed changes
             else
-                --LOG("We didnt find any overlapping shields")
                 -- no units found
                 self.OverlappingShieldsCount = 0
+                self.OverlappingShields = {}
             end
         end
         -- return the shields in question
         return self.OverlappingShields, self.OverlappingShieldsCount
     end,
 
+    -- Check if the shield should collide with the weapon
+    -- This is used to prevent friendly fire, and to allow for DoNotCollideList to be used
+    -- to prevent collision with certain units
     OnCollisionCheckWeapon = function(self, firingWeapon)
+        -- Check if the shield and the unit firing the weapon are allies
+        if IsAlly(self.Army, GetArmy(firingWeapon.unit)) then
+            return false
+        end
 
-		local GetArmy = GetArmy
-	
-		if IsAlly( self.Army, GetArmy(firingWeapon.unit) ) then
-		
-			return false
-			
-		end
-	
-		local weaponBP = firingWeapon.bp
-	
-        -- Check DNC list
+        -- Check DoNotCollideList
+        local weaponBP = firingWeapon.bp
         if weaponBP.DoNotCollideList then
-			--LOG("*AI DEBUG Processing Shield DNC List "..repr(weaponBP.DoNotCollideList))
-			
-			local LOUDENTITY = LOUDENTITY
-			local LOUDPARSE = LOUDPARSE
-			
-			for _, v in weaponBP.DoNotCollideList do
-				if LOUDENTITY(LOUDPARSE(v), self) then
-					return false
-				end
-			end
-		end   
-        
+            -- Iterate over the DoNotCollideList, and if the shield matches any of the entities, return false
+            local LOUDENTITY = LOUDENTITY
+            local LOUDPARSE = LOUDPARSE
+            for _, v in weaponBP.DoNotCollideList do
+                if LOUDENTITY(LOUDPARSE(v), self) then
+                    return false
+                end
+            end
+        end
+
+        -- If the shield does not match any of the entities in the DoNotCollideList, then return true
         return true
     end,
     
     GetOverkill = function(self,instigator,amount,type)
     end,    
 
-    OnDamage = function(self, instigator, amount, vector, damageType)
 
-        -- only applies to trees
+    -- This function is called when a shield is directly impacted, excluding personal shields.
+    -- It's also called from the ApplyDamage function when doOverspill is true.
+
+    -- The main purpose of this function is to apply shield spill damage to other shields in the area.
+    OnDamage = function(self, instigator, amount, vector, damageType)
+        
+        -- Only applies to trees. This is a special case for the tree force and tree fire damage types.
+        -- It's not necessary to apply shield spill damage to trees, as they are not entities that can take damage.
         if damageType == "TreeForce" or damageType == "TreeFire" then
             return
         end
@@ -436,12 +421,9 @@ Shield = Class(QCEShield) {
     end,
 
     ApplyDamage = function(self, instigator, amount, vector, dmgType, doOverspill)
-
         -- cache information used throughout the function
-
-        --LOG("We are entering LCE Version of Shield.lua - ApplyDamage Function")
-
         local tick = GetGameTick()
+        local instigatorId = (instigator and instigator.EntityId) or false
 
         -- damage correction for overcharge
         -- These preset damages deal `2 * dmg * absorbMult or armorMult`, currently absorption multiplier is 1x so we need to divide by 2
@@ -455,37 +437,23 @@ Shield = Class(QCEShield) {
         end
 
         -- damage correction for overspill, do not apply to personal shields
-
-        --LOG("The Shieldtype is "..repr(self.ShieldType))
-
         if self.ShieldType ~= "Personal" then
 
-            local instigatorId = (instigator and instigator.EntityId) or false
+            -- keep track of the damage we have received from this instigator at this tick
             if instigatorId then
-
-                -- reset our status quo for this instigator
                 if self.DamagedTick[instigatorId] ~= tick then
                     self.DamagedTick[instigatorId] = tick
                     self.DamagedRegular[instigatorId] = false
                     self.DamagedOverspill[instigatorId] = 0
                 end
 
-                -- anything but shield spill damage is regular damage, remove any previous overspill damage from the same instigator during the same tick
-                if dmgType ~= "ShieldSpill" then
-                    --LOG("The dmgType is (it should be Shieldspill)"..repr(dmgType))
-                    self.DamagedRegular[instigatorId] = tick
-                    amount = amount - self.DamagedOverspill[instigatorId]
-                    self.DamagedOverspill[instigatorId] = 0
-                else
-                    --LOG("It definite is "..repr(dmgType))
-                    -- if we have already received regular damage from this instigator at this tick, skip the overspill damage
-                    if self.DamagedRegular[instigatorId] == tick then
-                        return
-                    end
-
-                    -- keep track of overspill damage if we have not received any actual damage yet
-                    self.DamagedOverspill[instigatorId] = self.DamagedOverspill[instigatorId] + amount
+                -- if we have already received regular damage from this instigator at this tick, skip the overspill damage
+                if self.DamagedRegular[instigatorId] == tick then
+                    return
                 end
+
+                -- keep track of overspill damage if we have not received any actual damage yet
+                self.DamagedOverspill[instigatorId] = self.DamagedOverspill[instigatorId] + amount
             end
         end
 
@@ -493,9 +461,6 @@ Shield = Class(QCEShield) {
 
         if self.Owner ~= instigator then
             local absorbed = self:OnGetDamageAbsorption(instigator, amount, dmgType)
-
-            --LOG("We're calculating the damage now... - ApplyDamage Function")
-            --LOG("Absorbed is "..repr(absorbed))
 
             -- take some damage
             EntityAdjustHealth(self, instigator, -absorbed)
@@ -534,8 +499,6 @@ Shield = Class(QCEShield) {
 
         -- overspill damage checks
 
-        --LOG("doOverspill is "..repr(doOverspill))
-
         if -- prevent recursively applying overspill
         doOverspill
             -- personal shields do not have overspill damage
@@ -549,16 +512,11 @@ Shield = Class(QCEShield) {
         then
             local spillAmount = self.SpillOverDmgMod * amount
 
-            --LOG("The spillAmount is "..repr(spillAmount))
-
             -- retrieve shields that overlap with us
             local others, count = self:GetOverlappingShields(tick)
 
-            --LOG("Are we reaching here")
-
             -- apply overspill damage to neighbour shields
             for k = 1, count do
-                --LOG("Applying Overspill Damage to other shields nearby")
                 others[k]:ApplyDamage(
                     instigator, -- instigator
                     spillAmount, -- amount
@@ -571,39 +529,39 @@ Shield = Class(QCEShield) {
     end,
 
     RegenStartThread = function(self)
-	
-		local AdjustHealth = AdjustHealth
-		local GetHealth = GetHealth
-		local GetMaxHealth = GetMaxHealth
-		local SetShieldRatio = SetShieldRatio
+        -- this thread is responsible for regenerating the shield
+        -- it takes a delay before starting to regenerate
+        -- and will keep regenerating until the shield is full
+        -- or the unit is destroyed
+        -- it will also update the shield ratio for the owner unit
+    
+        local owner = self.Owner
+        local GetHealth = GetHealth
+        local GetMaxHealth = GetMaxHealth
+        local SetShieldRatio = SetShieldRatio
         
-		local WaitTicks = WaitTicks
-		
-		if ScenarioInfo.ShieldDialog then
-			LOG("*AI DEBUG Shield Starts Regen Thread on "..repr(self.Owner.BlueprintID).." "..repr(__blueprints[self.Owner.BlueprintID].Description).." - start delay is "..repr(self.RegenStartTime) )
-			
-			if not self.Owner.BlueprintID then
-				LOG("*AI DEBUG "..repr(self))
-			end
-		end
-		
-		-- shield takes a delay before regen starts
+        local function adjustHealthAndRatio(amount)
+            -- helper function to adjust health and shield ratio
+            AdjustHealth(self, owner, amount)
+            SetShieldRatio(owner, GetHealth(self)/GetMaxHealth(self))
+        end
+        
+        if ScenarioInfo.ShieldDialog then
+            LOG("*AI DEBUG Shield Starts Regen Thread on "..repr(self.BlueprintID).." "..repr(__blueprints[self.BlueprintID].Description).." - start delay is "..repr(self.RegenStartTime) )
+        end
+        
+        -- shield takes a delay before regen starts
         WaitTicks( 10 + (self.RegenStartTime * 10) )
         
         while not self.Dead and GetHealth(self) < GetMaxHealth(self) do
-
-			-- regen the shield
-			if not self.Dead then
-			
-				AdjustHealth( self, self.Owner, self.RegenRate )
-				
-				SetShieldRatio( self.Owner, GetHealth(self)/GetMaxHealth(self) )
-		
-				-- wait one second
-				WaitTicks(11)
-			end
+            -- regen the shield
+            if not self.Dead then
+                adjustHealthAndRatio(self.RegenRate)
+                
+                -- wait one second
+                WaitTicks(11)
+            end
         end
-		
     end,
 
     CreateImpactEffect = function(self, vector)
@@ -656,57 +614,52 @@ Shield = Class(QCEShield) {
         self.LiveImpactEntities = self.LiveImpactEntities - 1
     end,
 
+    -- called when the shield is destroyed
     OnDestroy = function(self)
-	
-		if ScenarioInfo.ShieldDialog then
-			LOG("*AI DEBUG Shield OnDestroy for "..__blueprints[self.Owner.BlueprintID].Description )
-		end
-	
-		self:SetMesh('')
-		
-		if self.MeshZ != nil then
-			self.MeshZ:Destroy()
-			self.MeshZ = nil
-		end
-        
+
         if self.RegenThread then
-           KillThread(self.RegenThread)
-           self.RegenThread = nil
+            -- kill the regen thread
+            KillThread(self.RegenThread)
+            self.RegenThread = nil
         end
-		
-		self:UpdateShieldRatio(0)
-		
-		self.Dead = true
-		
+
+        self:SetMesh('')
+        
+        if self.MeshZ != nil then
+            -- remove the mesh used for the shield
+            self.MeshZ:Destroy()
+            self.MeshZ = nil
+        end
+        
+        self:UpdateShieldRatio(0)
+        
+        self.Dead = true
+        
+        -- change state to dead
         ChangeState(self, self.DeadState)
-		
     end,
 
     -- Return true to process this collision, false to ignore it.
     OnCollisionCheck = function(self,other)
-	
-		-- credit Balthazar and PhilipJFry for diagnosing and repairing
-		if categories.SHIELDPIERCING then
-			if LOUDENTITY( categories.SHIELDPIERCING, other ) then
-				return false
-			end
+	    -- if shield piercing and other is a shield piercing category
+	    if categories.SHIELDPIERCING and LOUDENTITY(categories.SHIELDPIERCING, other) then
+		    return false
+	    end
+		
+        if other.LastImpact then
+            -- if hit same unit twice
+            if other.LastImpact == self.Owner.MyShield:GetEntityId() then
+                return false
+            end
         end
+
+        -- if other is a railgun
+	    if other.DamageData.DamageType == 'Railgun' then
+		    other.LastImpact = self.Owner.MyShield:GetEntityId()
+	    end
 		
-		-- for rail guns from 4DC credit Resin_Smoker
-		if other.LastImpact then
-		
-			-- if hit same unit twice
-			if other.LastImpact == self.Owner.MyShield:GetEntityId() then
-				return false
-			end
-		end
-		
-		if other.DamageData.DamageType == 'Railgun' then
-			other.LastImpact = self.Owner.MyShield:GetEntityId()
-		end
-		
-		local GetArmy = GetArmy
-        return IsEnemy( self.Army, GetArmy(other) )
+        -- return true if owner and other are enemies
+        return IsEnemy(self.Army, GetArmy(other))
     end,
 
     TurnOn = function(self)
